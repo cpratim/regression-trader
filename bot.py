@@ -57,6 +57,7 @@ class AlgoBot(object):
     def __init__(self, symbols, funds=5000, wait=True,  
                 margin=.005, freq=15, sleeptime=5, sandbox=True):
 
+        print('Starting Model Training')
         base = 'https://api.alpaca.markets'
         mins = 6.5 * 60
         if sandbox is True: base = 'https://paper-api.alpaca.markets'
@@ -77,6 +78,8 @@ class AlgoBot(object):
                                                    freq=self.freq)
             self.models[sym] = model
         print('All Models Generated \n')
+        if wait is True:
+            self._wait()
 
     def start(self):
 
@@ -237,8 +240,7 @@ class AlgoBot(object):
         time = until_open()
         print(f'Sleeping {time} seconds until Market Open')
         sleep(time)
-        now = str(datetime.now())
-        print(f'Starting Bot at {now}')
+        print(f'Starting Bot at {now()} \n')
 
     def _liquidate(self):
         for order in self.client.list_orders():
