@@ -11,11 +11,10 @@ from threading import Thread
 from functions import *
 from config import KEY_LIVE
 from indicators import rsi, macd
-from genstat import GenerativeStatistics
-#import auto_push
+from genstat import Regression
 
-KEY = 'PKE9M0ES661ICMMM7GRN'
-SECRET = 'jAPts72bGtfJjYDlW7t8ptHLjHjYs3DL7Z/fWk7G'
+KEY = ''
+SECRET = ''
 
 def date():
     return str(datetime.now())[:10]
@@ -30,10 +29,10 @@ def read_data(f):
 def now():
     return datetime.now()
 
-def until_open():
+def until_open(extra):
     now = datetime.now()
     y, m, d = [int(s) for s in str(now)[:10].split('-')]
-    market_open = datetime(y, m, d, 10, 5)
+    market_open = datetime(y, m, d, 9, 30) + timedelta(minutes=extra)
     return ((market_open - now).seconds)
 
 def market_close(unix):
@@ -109,9 +108,10 @@ class AlgoBot(object):
             else:
 
                 a = self.active[sym]
-                _id, qty, type_, max_time, high, sell = (a['id'], a['qty'], 
-                                                         a['type'], a['max_time'], 
-                                                         a['high'], a['sell'])
+                _id, qty, type_, max_time, high, sell, stop_loss = (a['id'], a['qty'], 
+                                                                    a['type'], a['max_time'], 
+                                                                    a['high'], a['sell'],
+                                                                    a['stop_loss'])
                 fill_price = self._fill(_id)
                 if fill_price is not None:
                     if type_ == 'buy':
@@ -129,14 +129,17 @@ class AlgoBot(object):
                         self.funds[sym] += qty * fill_price
                         del self.active[sym]
                 else:
+                    if latest_price <= stop_loss and type_ == 'sell':
+                        self.pending.append(sym)
+                        Thread(target=self._sell, args=(sym, qty, stop_loss, True)).start()
+
                     if latest_price > high and type_ == 'buy':
                         self.client.cancel_order(_id)
                         del self.active[sym]
 
                     elif (max_time - now()).seconds > 80000:
-                        if type_ == 'buy':
-                            self.client.cancel_order(_id)
-                        elif type_ == 'sell' and sym not in self.pending:
+                        self.client.cancel_order(_id)
+                        elif type_ != 'buy' and sym not in self.pending:
                             self.pending.append(sym)
                             Thread(target=self._sell, args=(sym, qty,)).start()
                         del self.active[sym]
@@ -184,22 +187,24 @@ class AlgoBot(object):
                                 'qty': qty,
                                 'bought': price, 
                                 'sell': profit,
-                                'high': high}
+                                'high': high,
+                                'stop_loss': price * (1 - self.margin)}
             self.pending.remove(sym)
         except Exception as error:
             self._log(error)
             return None
         return price
 
-    def _sell(self, sym, qty, price=None):
+    def _sell(self, sym, qty, price=None, stop_loss=False):
 
         if price is not None:
             try:
                 order = self.client.submit_order(
                                     symbol=sym, side='sell', 
                                     type='limit', limit_price=price, 
-                                    qty=qty, time_in_force='day',)
-                self.active[sym]['type'] = 'sell'
+                                    qty=qty, time_in_force='day')
+                if not stop_loss: self.active[sym]['type'] = 'sell'
+                else: self.active[sym]['type'] = 'stop_loss'
                 self.active[sym]['id'] = order.id
                 self.pending.remove(sym)
                 return 
@@ -236,8 +241,12 @@ class AlgoBot(object):
         fill_price = self.client.get_order(_id).filled_avg_price
         return float(fill_price) if fill_price is not None else None
 
+    def _canceled(self, _id):
+
+        return self.client.get_order(_id).status == 'canceled'
+
     def _wait(self):
-        time = until_open()
+        time = until_open(self.freq)
         print(f'Sleeping {time} seconds until Market Open')
         sleep(time)
         print(f'Starting Bot at {now()} \n')

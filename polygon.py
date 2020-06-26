@@ -203,7 +203,8 @@ class PolygonRest(object):
         data = json.loads(raw)
         return float(data['last']['price'])
 
-
+'''
 poly = PolygonRest(KEY_LIVE)
 print(poly.get_last_price('AAPL'))
 poly.get_bars(start='2020-06-25')
+'''

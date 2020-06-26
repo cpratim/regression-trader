@@ -143,7 +143,7 @@ def backtest_model(min_, freq, model, raw=False):
     last_buy, low_goal, high_goal = 0, 0, 0
     open_ = 0
     last_low_goal, last_high_goal = 1000, 0
-    for m in min_[15:]:
+    for m in min_[freq:]:
         price = m[1]
         high_goal, low_goal = model.predict(last_freq)
         low_perc = (price - low_goal)/price * 100
@@ -157,7 +157,7 @@ def backtest_model(min_, freq, model, raw=False):
             if price >= last_high_goal and type_ == 0:
                 waiting = 0
                 #pass
-            if price <= last_low_goal:
+            if price <= last_low_goal and type_ == 0:
                 shares = floor(funds/price)
                 last_buy = price
                 type_ = 1
@@ -168,11 +168,18 @@ def backtest_model(min_, freq, model, raw=False):
                     type_ = 0
                     profit += p
                     funds += p
+                if price <= (last_buy * .995):
+                    p = shares * (price - last_buy)
+                    waiting = 0
+                    type_ = 0
+                    profit += p
+                    funds += p
                 else: waiting += 1
             
         if waiting == freq:
             if type_ == 1:
                 p = shares * (price - last_buy)
+                print(shares, p, price, last_buy)
                 profit += p
                 type_ = 0
                 funds += p
